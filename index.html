@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>SSLC Referral System</title>
+
+<!-- Firebase CDN -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+<style>
+body {
+  margin: 0;
+  font-family: Arial;
+  background: linear-gradient(to bottom, #0a0f2c, #050a1f);
+  color: white;
+  padding: 20px;
+}
+
+.card {
+  background: #111a3a;
+  padding: 20px;
+  border-radius: 15px;
+  margin-bottom: 20px;
+  box-shadow: 0 0 10px black;
+}
+
+input {
+  width: 100%;
+  padding: 12px;
+  margin: 8px 0;
+  border-radius: 10px;
+  border: none;
+}
+
+button {
+  background: #FFD700;
+  color: black;
+  padding: 12px;
+  border: none;
+  border-radius: 10px;
+  width: 100%;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.gold { color: gold; }
+.center { text-align: center; }
+
+.hidden { display: none; }
+
+</style>
+</head>
+<body>
+
+<h2 class="center">🔥 SSLC 2026 Crash Course</h2>
+
+<!-- AUTH SECTION -->
+<div class="card" id="authSection">
+  <h3>Register / Login</h3>
+  <input type="text" id="name" placeholder="Your Name">
+  <input type="email" id="email" placeholder="Email">
+  <input type="password" id="password" placeholder="Password">
+  <input type="text" id="referralInput" placeholder="Referral Code (Optional)">
+  <button onclick="register()">Register</button>
+  <button onclick="login()">Login</button>
+</div>
+
+<!-- DASHBOARD -->
+<div class="card hidden" id="dashboard">
+  <h3>Welcome <span id="studentName"></span> 👋</h3>
+
+  <p>Your Referral Code:</p>
+  <h2 class="gold" id="myCode"></h2>
+
+  <p>Referral Streak:</p>
+  <h2 id="refCount">0/10</h2>
+
+  <div id="unlockStatus"></div>
+
+  <button onclick="shareWhatsApp()">Share on WhatsApp</button>
+  <button onclick="logout()">Logout</button>
+</div>
+
+<script>
+/* 🔥 FIREBASE CONFIG */
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyC0Jf7YY9swFu_JAY-TeDfvlMCz1Iw23MU",
+  authDomain: "leadgen-da6b8.firebaseapp.com",
+  projectId: "leadgen-da6b8",
+  storageBucket: "leadgen-da6b8.firebasestorage.app",
+  messagingSenderId: "462081996744",
+  appId: "1:462081996744:web:177127efe807c0f6b332fd",
+  measurementId: "G-FXZFGYM89Y"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+/* AUTO FILL REFERRAL FROM LINK */
+const urlParams = new URLSearchParams(window.location.search);
+const refFromURL = urlParams.get('ref');
+if(refFromURL){
+  document.getElementById("referralInput").value = refFromURL;
+}
+
+/* REGISTER FUNCTION */
+async function register(){
+  const name = nameInput = document.getElementById("name").value;
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+  const referralInput = document.getElementById("referralInput").value;
+
+  try{
+    const userCredential = await auth.createUserWithEmailAndPassword(email,password);
+    const user = userCredential.user;
+
+    const referralCode = "SSLC" + Math.floor(1000 + Math.random() * 9000);
+
+    await db.collection("users").doc(user.uid).set({
+      name: name,
+      email: email,
+      referralCode: referralCode,
+      referredBy: referralInput || null,
+      referralCount: 0,
+      unlocked: false,
+      joinedDate: new Date()
+    });
+
+    if(referralInput){
+      const snapshot = await db.collection("users")
+        .where("referralCode","==",referralInput).get();
+
+      snapshot.forEach(async (doc)=>{
+        const data = doc.data();
+        let newCount = data.referralCount + 1;
+
+        await db.collection("users").doc(doc.id).update({
+          referralCount: newCount,
+          unlocked: newCount >= 10
+        });
+      });
+    }
+
+    alert("Account Created!");
+  }catch(error){
+    alert(error.message);
+  }
+}
+
+/* LOGIN FUNCTION */
+async function login(){
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+
+  try{
+    await auth.signInWithEmailAndPassword(email,password);
+  }catch(error){
+    alert(error.message);
+  }
+}
+
+/* AUTH STATE */
+auth.onAuthStateChanged(async (user)=>{
+  if(user){
+    document.getElementById("authSection").classList.add("hidden");
+    document.getElementById("dashboard").classList.remove("hidden");
+
+    const doc = await db.collection("users").doc(user.uid).get();
+    const data = doc.data();
+
+    document.getElementById("studentName").innerText = data.name;
+    document.getElementById("myCode").innerText = data.referralCode;
+    document.getElementById("refCount").innerText =
+      data.referralCount + "/10";
+
+    if(data.unlocked){
+      document.getElementById("unlockStatus").innerHTML =
+        "<h2 class='gold'>🎉 Course Unlocked!</h2>";
+    }else{
+      document.getElementById("unlockStatus").innerHTML =
+        "<p>Refer 10 friends to unlock FREE course.</p>";
+    }
+
+  }else{
+    document.getElementById("authSection").classList.remove("hidden");
+    document.getElementById("dashboard").classList.add("hidden");
+  }
+});
+
+/* SHARE WHATSAPP */
+function shareWhatsApp(){
+  const code = document.getElementById("myCode").innerText;
+  const link = window.location.origin + "?ref=" + code;
+
+  const message =
+   "🔥 Join SSLC 2026 Crash Course FREE!\n\n" +
+   "Use my referral link:\n" + link;
+
+  const whatsappURL =
+   "https://wa.me/?text=" + encodeURIComponent(message);
+
+  window.open(whatsappURL,"_blank");
+}
+
+/* LOGOUT */
+function logout(){
+  auth.signOut();
+}
+
+</script>
+
+</body>
+  </html>
