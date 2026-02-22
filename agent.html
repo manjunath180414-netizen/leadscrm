@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Agent Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, collection, query, where, getDocs, updateDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // 🔥 REPLACE WITH YOUR CONFIG
+    // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyC0Jf7YY9swFu_JAY-TeDfvlMCz1Iw23MU",
+  authDomain: "leadgen-da6b8.firebaseapp.com",
+  projectId: "leadgen-da6b8",
+  storageBucket: "leadgen-da6b8.firebasestorage.app",
+  messagingSenderId: "462081996744",
+  appId: "1:462081996744:web:177127efe807c0f6b332fd",
+  measurementId: "G-FXZFGYM89Y"
+};
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    let currentLead = null;
+    let agentUID = null;
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        window.location.href = "index.html";
+        return;
+      }
+
+      agentUID = user.uid;
+      document.getElementById("agentName").innerText = user.displayName;
+      loadNextLead();
+      loadInterestedLeads();
+    });
+
+    async function loadNextLead() {
+      const q = query(
+        collection(db, "leads"),
+        where("assignedTo", "==", agentUID),
+        where("status", "==", "pending")
+      );
+
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
+        document.getElementById("leadCard").innerHTML =
+          "<h3>No Pending Leads</h3>";
+        return;
+      }
+
+      currentLead = snap.docs[0];
+      const data = currentLead.data();
+
+      document.getElementById("leadCard").innerHTML = `
+        <h2>${data.name}</h2>
+        <p>${data.phone}</p>
+        <button onclick="copyNumber('${data.phone}')">Copy Number</button>
+      `;
+    }
+
+    window.copyNumber = function (number) {
+      navigator.clipboard.writeText(number);
+      const now = new Date();
+      updateDoc(doc(db, "leads", currentLead.id), {
+        copyStartTime: now,
+      });
+      alert("Number Copied. Timer Started.");
+    };
+
+    window.setStatus = async function (status) {
+      await updateDoc(doc(db, "leads", currentLead.id), {
+        status: status,
+        updatedAt: new Date(),
+        interestedTime: status === "interested" ? new Date() : null,
+      });
+
+      loadNextLead();
+      loadInterestedLeads();
+    };
+
+    function loadInterestedLeads() {
+      const q = query(
+        collection(db, "leads"),
+        where("assignedTo", "==", agentUID),
+        where("status", "in", ["interested", "link_sent"])
+      );
+
+      onSnapshot(q, (snapshot) => {
+        let html = "";
+        let pendingLink = 0;
+        let pendingVerify = 0;
+
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          const now = new Date();
+          let remaining = 0;
+
+          if (data.status === "interested") {
+            const diff = (now - data.interestedTime.toDate()) / 60000;
+            remaining = 30 - Math.floor(diff);
+            if (remaining <= 0) pendingLink++;
+          }
+
+          if (data.status === "link_sent") {
+            const diff = (now - data.linkSentTime.toDate()) / 60000;
+            remaining = 30 - Math.floor(diff);
+            if (remaining <= 0) pendingVerify++;
+          }
+
+          html += `
+            <div class="pipeline-card">
+              <strong>${data.name}</strong><br>
+              ${data.phone}<br>
+              ⏳ ${remaining > 0 ? remaining + " mins left" : "TIME OVER"}
+              <br>
+              ${
+                data.status === "interested"
+                  ? `<button onclick="sendLink('${docSnap.id}')">Send Link</button>`
+                  : `<button onclick="verifyLead('${docSnap.id}')">Verified</button>`
+              }
+            </div>
+          `;
+        });
+
+        document.getElementById("interestedLeads").innerHTML = html;
+        document.getElementById("warning").innerHTML =
+          pendingLink > 0
+            ? `⚠ ${pendingLink} students link pending`
+            : pendingVerify > 0
+            ? `⚠ ${pendingVerify} verification pending`
+            : "";
+      });
+    }
+
+    window.sendLink = async function (id) {
+      await updateDoc(doc(db, "leads", id), {
+        status: "link_sent",
+        linkSentTime: new Date(),
+      });
+    };
+
+    window.verifyLead = async function (id) {
+      await updateDoc(doc(db, "leads", id), {
+        status: "verified",
+        verifiedTime: new Date(),
+      });
+    };
+  </script>
+
+  <style>
+    body {
+      font-family: Arial;
+      margin: 0;
+      background: #f4f6f9;
+      padding: 15px;
+    }
+
+    .topbar {
+      font-size: 18px;
+      margin-bottom: 15px;
+    }
+
+    .lead-card {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    button {
+      padding: 10px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      background: #007bff;
+      color: white;
+      width: 100%;
+    }
+
+    .status-buttons button {
+      background: #28a745;
+      margin-top: 8px;
+    }
+
+    .status-buttons button:nth-child(2) { background: #dc3545; }
+    .status-buttons button:nth-child(3) { background: #fd7e14; }
+    .status-buttons button:nth-child(4) { background: #6c757d; }
+
+    .pipeline-card {
+      background: white;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.1);
+    }
+
+    .warning {
+      color: red;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="topbar">
+    Welcome, <span id="agentName"></span>
+  </div>
+
+  <div class="lead-card" id="leadCard">
+    Loading lead...
+  </div>
+
+  <div class="status-buttons">
+    <button onclick="setStatus('interested')">Interested</button>
+    <button onclick="setStatus('not_interested')">Not Interested</button>
+    <button onclick="setStatus('switch_off')">Switch / Not Receiving</button>
+    <button onclick="setStatus('invalid_number')">Invalid Number</button>
+  </div>
+
+  <hr>
+
+  <div class="warning" id="warning"></div>
+
+  <h3>Interested Leads</h3>
+  <div id="interestedLeads"></div>
+
+</body>
+  </html>
