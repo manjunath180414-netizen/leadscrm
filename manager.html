@@ -3,9 +3,6 @@
 <head>
   <title>Manager Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js"></script>
 
   <style>
     body {
@@ -122,15 +119,12 @@
     }
   </style>
 </head>
+
 <body>
 
 <div class="sidebar">
   <h2>Manager</h2>
   <a href="#">Dashboard</a>
-  <a href="#">Agents</a>
-  <a href="#">Bulk Upload</a>
-  <a href="#">Unassigned Leads</a>
-  <a href="#">All Leads</a>
 </div>
 
 <div class="main">
@@ -139,11 +133,7 @@
     <div class="card blue"><h3 id="totalLeads">0</h3><p>Total Leads</p></div>
     <div class="card yellow"><h3 id="totalAgents">0</h3><p>Total Agents</p></div>
     <div class="card gray"><h3 id="pending">0</h3><p>Pending</p></div>
-    <div class="card blue"><h3 id="called">0</h3><p>Called</p></div>
-    <div class="card orange"><h3 id="followUp">0</h3><p>Follow Up</p></div>
-    <div class="card red"><h3 id="wrong">0</h3><p>Wrong Number</p></div>
-    <div class="card red"><h3 id="notInterested">0</h3><p>Not Interested</p></div>
-    <div class="card green"><h3 id="verified">0</h3><p>Fully Verified</p></div>
+    <div class="card green"><h3 id="verified">0</h3><p>Verified</p></div>
   </div>
 
   <div class="section-title">Agents</div>
@@ -165,13 +155,12 @@
       <tr>
         <th>Name</th>
         <th>Phone</th>
-        <th>Assign</th>
       </tr>
     </thead>
     <tbody></tbody>
   </table>
 
-  <div class="section-title">Bulk Upload Leads</div>
+  <div class="section-title">Bulk Upload Leads (CSV)</div>
   <div class="upload-box">
     <input type="file" id="fileInput">
     <button onclick="uploadLeads()">Upload</button>
@@ -181,90 +170,89 @@
 
 <script type="module">
 
-// 🔥 Firebase Config (Replace Yours)
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyC0Jf7YY9swFu_JAY-TeDfvlMCz1Iw23MU",
   authDomain: "leadgen-da6b8.firebaseapp.com",
   projectId: "leadgen-da6b8",
   storageBucket: "leadgen-da6b8.firebasestorage.app",
   messagingSenderId: "462081996744",
-  appId: "1:462081996744:web:177127efe807c0f6b332fd",
-  measurementId: "G-FXZFGYM89Y"
+  appId: "1:462081996744:web:177127efe807c0f6b332fd"
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
 
-// 🔴 REALTIME DASHBOARD COUNTS
-onSnapshot(collection(db,"leads"), snapshot => {
+onAuthStateChanged(auth, (user) => {
 
-  let total = snapshot.size;
-  let pending=0,called=0,follow=0,wrong=0,notInt=0,verified=0;
+  if (!user) {
+    window.location.href = "index.html";
+    return;
+  }
 
-  snapshot.forEach(doc=>{
-    let s = doc.data().status;
-    if(s=="pending") pending++;
-    if(s=="called") called++;
-    if(s=="follow_up") follow++;
-    if(s=="wrong_number") wrong++;
-    if(s=="not_interested") notInt++;
-    if(s=="fully_verified") verified++;
+  // Load Agents
+  onSnapshot(collection(db,"agents"), snapshot=>{
+    document.getElementById("totalAgents").innerText = snapshot.size;
+    let html="";
+    snapshot.forEach(d=>{
+      html+=`<tr>
+        <td>${d.data().name}</td>
+        <td>${d.data().email}</td>
+        <td><button class="delete-btn" onclick="deleteAgent('${d.id}')">Delete</button></td>
+      </tr>`;
+    });
+    document.querySelector("#agentsTable tbody").innerHTML = html;
   });
 
-  document.getElementById("totalLeads").innerText = total;
-  document.getElementById("pending").innerText = pending;
-  document.getElementById("called").innerText = called;
-  document.getElementById("followUp").innerText = follow;
-  document.getElementById("wrong").innerText = wrong;
-  document.getElementById("notInterested").innerText = notInt;
-  document.getElementById("verified").innerText = verified;
-});
+  // Load Leads Count
+  onSnapshot(collection(db,"leads"), snapshot=>{
+    document.getElementById("totalLeads").innerText = snapshot.size;
 
-// 🔴 LOAD AGENTS
-onSnapshot(collection(db,"agents"), snapshot=>{
-  document.getElementById("totalAgents").innerText = snapshot.size;
-  let html="";
-  snapshot.forEach(d=>{
-    html+=`<tr>
-      <td>${d.data().name}</td>
-      <td>${d.data().email}</td>
-      <td><button class="delete-btn" onclick="deleteAgent('${d.id}')">Delete</button></td>
-    </tr>`;
+    let pending = 0;
+    let verified = 0;
+
+    snapshot.forEach(d=>{
+      if(d.data().status=="pending") pending++;
+      if(d.data().status=="verified") verified++;
+    });
+
+    document.getElementById("pending").innerText = pending;
+    document.getElementById("verified").innerText = verified;
+
+    let html="";
+    snapshot.forEach(d=>{
+      if(!d.data().assignedTo){
+        html+=`<tr>
+          <td>${d.data().name}</td>
+          <td>${d.data().phone}</td>
+        </tr>`;
+      }
+    });
+
+    document.querySelector("#unassignedTable tbody").innerHTML = html;
   });
-  document.querySelector("#agentsTable tbody").innerHTML = html;
+
 });
 
-// 🔴 DELETE AGENT
 window.deleteAgent = async(id)=>{
   await deleteDoc(doc(db,"agents",id));
 };
 
-// 🔴 UNASSIGNED LEADS
-onSnapshot(collection(db,"leads"), snapshot=>{
-  let html="";
-  snapshot.forEach(d=>{
-    if(!d.data().assignedTo){
-      html+=`<tr>
-        <td>${d.data().name}</td>
-        <td>${d.data().phone}</td>
-        <td><button class="assign-btn" onclick="assignLead('${d.id}')">Assign</button></td>
-      </tr>`;
-    }
-  });
-  document.querySelector("#unassignedTable tbody").innerHTML = html;
-});
-
-// 🔴 ASSIGN EQUALLY
 window.assignEqually = async()=>{
   const agentsSnap = await getDocs(collection(db,"agents"));
   const leadsSnap = await getDocs(collection(db,"leads"));
 
   let agents = [];
   agentsSnap.forEach(d=>agents.push(d.id));
+
+  if(agents.length==0){
+    alert("No agents available");
+    return;
+  }
 
   let i=0;
   for(const lead of leadsSnap.docs){
@@ -278,9 +266,10 @@ window.assignEqually = async()=>{
   alert("Leads Assigned Equally");
 };
 
-// 🔴 BULK UPLOAD (Simple CSV)
 window.uploadLeads = async()=>{
   const file = document.getElementById("fileInput").files[0];
+  if(!file){ alert("Select CSV file"); return; }
+
   const text = await file.text();
   const rows = text.split("\n");
 
@@ -295,13 +284,16 @@ window.uploadLeads = async()=>{
         name:name,
         phone:phone,
         status:"pending",
-        assignedTo:null
+        assignedTo:null,
+        createdAt:new Date()
       });
     }
   }
-  alert("Uploaded Successfully");
+
+  alert("Upload Complete");
 };
 
 </script>
+
 </body>
-          </html>
+</html>
