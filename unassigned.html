@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Unassigned Leads</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial;
+      background: #F4F6F9;
+      padding: 20px;
+    }
+
+    h2 {
+      margin-bottom: 15px;
+    }
+
+    .controls {
+      margin-bottom: 15px;
+    }
+
+    select, button {
+      padding: 8px;
+      margin-right: 8px;
+      border-radius: 5px;
+      border: none;
+    }
+
+    .assign-btn { background: #007bff; color: white; }
+    .equal-btn { background: #28a745; color: white; }
+
+    table {
+      width: 100%;
+      background: white;
+      border-radius: 8px;
+      border-collapse: collapse;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid #ddd;
+      text-align: left;
+    }
+
+    th {
+      background: #f1f1f1;
+    }
+
+  </style>
+</head>
+
+<body>
+
+<h2>Unassigned Leads</h2>
+
+<div class="controls">
+  <select id="agentSelect">
+    <option value="">Select Agent</option>
+  </select>
+
+  <button class="assign-btn" onclick="assignSelected()">Assign Selected</button>
+  <button class="equal-btn" onclick="assignEqually()">Assign All Equally</button>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th><input type="checkbox" id="selectAll"></th>
+      <th>Name</th>
+      <th>Phone</th>
+    </tr>
+  </thead>
+  <tbody id="leadTable"></tbody>
+</table>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getFirestore, collection, onSnapshot, getDocs, updateDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC0Jf7YY9swFu_JAY-TeDfvlMCz1Iw23MU",
+  authDomain: "leadgen-da6b8.firebaseapp.com",
+  projectId: "leadgen-da6b8",
+  storageBucket: "leadgen-da6b8.firebasestorage.app",
+  messagingSenderId: "462081996744",
+  appId: "1:462081996744:web:177127efe807c0f6b332fd"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    window.location.href = "index.html";
+    return;
+  }
+
+  loadAgents();
+  loadUnassignedLeads();
+});
+
+function loadAgents() {
+  onSnapshot(collection(db,"agents"), snapshot=>{
+    let dropdown="<option value=''>Select Agent</option>";
+    snapshot.forEach(d=>{
+      dropdown+=`<option value="${d.id}">${d.data().name}</option>`;
+    });
+    document.getElementById("agentSelect").innerHTML = dropdown;
+  });
+}
+
+function loadUnassignedLeads() {
+  onSnapshot(collection(db,"leads"), snapshot=>{
+    let html="";
+    snapshot.forEach(d=>{
+      if(!d.data().assignedTo){
+        html+=`
+          <tr>
+            <td><input type="checkbox" class="leadCheck" value="${d.id}"></td>
+            <td>${d.data().name}</td>
+            <td>${d.data().phone}</td>
+          </tr>
+        `;
+      }
+    });
+    document.getElementById("leadTable").innerHTML = html;
+  });
+}
+
+window.assignSelected = async()=>{
+
+  const agentId = document.getElementById("agentSelect").value;
+  if(!agentId){ alert("Select agent first"); return; }
+
+  const selected = document.querySelectorAll(".leadCheck:checked");
+  if(selected.length==0){ alert("Select at least one lead"); return; }
+
+  for(const cb of selected){
+    await updateDoc(doc(db,"leads",cb.value),{
+      assignedTo: agentId
+    });
+  }
+
+  alert("Selected leads assigned");
+};
+
+window.assignEqually = async()=>{
+
+  const agentsSnap = await getDocs(collection(db,"agents"));
+  const leadsSnap = await getDocs(collection(db,"leads"));
+
+  let agents = [];
+  agentsSnap.forEach(d=>agents.push(d.id));
+
+  if(agents.length==0){
+    alert("No agents available");
+    return;
+  }
+
+  let i=0;
+  for(const lead of leadsSnap.docs){
+    if(!lead.data().assignedTo){
+      await updateDoc(doc(db,"leads",lead.id),{
+        assignedTo: agents[i % agents.length]
+      });
+      i++;
+    }
+  }
+
+  alert("All unassigned leads distributed equally");
+};
+
+// Select All Checkbox
+document.getElementById("selectAll").addEventListener("change", function(){
+  const all = document.querySelectorAll(".leadCheck");
+  all.forEach(cb=> cb.checked = this.checked);
+});
+
+</script>
+
+</body>
+</html>
