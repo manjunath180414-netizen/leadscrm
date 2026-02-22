@@ -124,7 +124,10 @@
     </thead>
     <tbody></tbody>
   </table>
-
+<div class="upload-box">
+  <input type="file" id="fileInput" accept=".csv">
+  <button onclick="uploadLeads()" class="equal-btn">Upload CSV</button>
+</div>
   <div class="section-title">Unassigned Leads</div>
   <button class="equal-btn" onclick="assignEqually()">Assign Equally</button>
   <table id="unassignedTable">
@@ -139,10 +142,7 @@
 </div>
 <div class="section-title">Bulk Upload Leads (CSV)</div>
 
-<div class="upload-box">
-  <input type="file" id="fileInput" accept=".csv">
-  <button onclick="uploadLeads()" class="equal-btn">Upload CSV</button>
-</div>
+
 <script type="module">
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
