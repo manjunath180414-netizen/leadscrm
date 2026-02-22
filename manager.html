@@ -136,9 +136,13 @@
     </thead>
     <tbody></tbody>
   </table>
-
 </div>
+<div class="section-title">Bulk Upload Leads (CSV)</div>
 
+<div class="upload-box">
+  <input type="file" id="fileInput" accept=".csv">
+  <button onclick="uploadLeads()" class="equal-btn">Upload CSV</button>
+</div>
 <script type="module">
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -245,6 +249,70 @@ window.assignEqually=async()=>{
     }
   }
   alert("Leads Assigned Equally");
+};
+  window.uploadLeads = async function(){
+
+  const file = document.getElementById("fileInput").files[0];
+
+  if(!file){
+    alert("Please select CSV file");
+    return;
+  }
+
+  const text = await file.text();
+  const rows = text.split("\n");
+
+  // 🔹 Get existing numbers from Firestore
+  const snapshot = await getDocs(collection(db,"leads"));
+  const existingNumbers = new Set();
+
+  snapshot.forEach(doc=>{
+    const phone = doc.data().phone;
+    if(phone){
+      existingNumbers.add(phone);
+    }
+  });
+
+  let uploaded = 0;
+  let skipped = 0;
+  const fileNumbers = new Set(); // to avoid duplicate inside same file
+
+  for(const row of rows){
+
+    const parts = row.split(",");
+
+    let name = parts[0]?.trim() || "";
+    let phone = parts[1]?.trim() || "";
+
+    phone = phone.replace(/\D/g,"");
+
+    if(phone.length === 10){
+
+      if(existingNumbers.has(phone) || fileNumbers.has(phone)){
+        skipped++;
+        continue;
+      }
+
+      await addDoc(collection(db,"leads"),{
+        name:name,
+        phone:phone,
+        status:"pending",
+        assignedTo:null,
+        createdAt:new Date()
+      });
+
+      fileNumbers.add(phone);
+      existingNumbers.add(phone);
+      uploaded++;
+    } else {
+      skipped++;
+    }
+  }
+
+  alert(
+    uploaded + " Leads Uploaded\n" +
+    skipped + " Skipped (Duplicate / Invalid)"
+  );
 };
 
 </script>
